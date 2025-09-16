@@ -1,3 +1,0 @@
-John Smith
-Software Engineer
-john@email.com
