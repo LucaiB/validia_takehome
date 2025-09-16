@@ -1,5 +1,4 @@
-# Multi-stage build for Python backend
-FROM python:3.9-slim as python-backend
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -21,5 +20,5 @@ COPY python_backend/ .
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["python", "main.py"]
+# Run the application with uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

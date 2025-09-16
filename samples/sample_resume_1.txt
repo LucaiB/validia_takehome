@@ -1,0 +1,41 @@
+John Smith
+Software Engineer
+john.smith@email.com
+(555) 123-4567
+San Francisco, CA
+
+EXPERIENCE
+Senior Software Engineer | TechCorp Inc. | 2020-2024
+• Led development of microservices architecture serving 1M+ users
+• Improved system performance by 40% through code optimization
+• Mentored 3 junior developers and conducted code reviews
+• Technologies: Python, React, AWS, Docker, Kubernetes
+
+Software Engineer | StartupXYZ | 2018-2020
+• Built full-stack web applications using Python and JavaScript
+• Collaborated with product team to define technical requirements
+• Reduced database query time by 60% through indexing optimization
+• Technologies: Django, PostgreSQL, Redis, Git
+
+EDUCATION
+Bachelor of Science in Computer Science
+University of California, Berkeley | 2014-2018
+GPA: 3.8/4.0
+
+SKILLS
+Programming Languages: Python, JavaScript, Java, Go
+Frameworks: Django, React, Node.js, FastAPI
+Databases: PostgreSQL, MongoDB, Redis
+Cloud: AWS, Docker, Kubernetes
+Tools: Git, Jenkins, Jira
+
+PROJECTS
+E-commerce Platform | 2023
+• Built scalable e-commerce platform handling 10K+ daily transactions
+• Implemented payment processing with Stripe API
+• Used React for frontend and Python/Django for backend
+
+Machine Learning Pipeline | 2022
+• Developed ML pipeline for recommendation system
+• Achieved 25% improvement in recommendation accuracy
+• Technologies: Python, scikit-learn, TensorFlow, AWS SageMaker

@@ -27,13 +27,40 @@ class ContactVerificationService:
         self.numverify_api_key = numverify_api_key
         self.abstract_api_key = abstract_api_key
         
-        # Disposable email domains list (expanded)
+        # Comprehensive disposable email domains list for offline validation
         self.disposable_domains = {
             '10minutemail.com', 'tempmail.org', 'guerrillamail.com',
             'mailinator.com', 'throwaway.email', 'temp-mail.org',
             'yopmail.com', 'maildrop.cc', 'getnada.com', 'sharklasers.com',
             'guerrillamailblock.com', 'pokemail.net', 'spam4.me',
-            'bccto.me', 'chacuo.net', 'dispostable.com', 'mailnesia.com'
+            'bccto.me', 'chacuo.net', 'dispostable.com', 'mailnesia.com',
+            'tempail.com', 'trashmail.com', 'spamgourmet.com', 'spam.la',
+            'binkmail.com', 'bobmail.info', 'chammy.info', 'devnullmail.com',
+            'letthemeatspam.com', 'mailin8r.com', 'mailinator2.com',
+            'notmailinator.com', 'reallymymail.com', 'reconmail.com',
+            'safetymail.info', 'sogetthis.com', 'spamhereplease.com',
+            'superrito.com', 'thisisnotmyrealemail.com', 'tradermail.info',
+            'veryrealemail.com', 'wegwerfmail.de', 'wegwerfmail.net',
+            'wegwerfmail.org', 'wegwerpmailadres.nl', 'wetrainbayarea.com',
+            'wetrainbayarea.org', 'wh4f.org', 'whyspam.me', 'willselfdestruct.com',
+            'wuzup.net', 'wuzupmail.net', 'yeah.net', 'yopmail.net',
+            'yopmail.org', 'yopmail.pp.ua', 'ypmail.webarnak.fr.eu.org',
+            'cool.fr.nf', 'jetable.fr.nf', 'nospam.ze.tc', 'nomail.xl.cx',
+            'mega.zik.dj', 'speed.1s.fr', 'courriel.fr.nf', 'moncourrier.fr.nf',
+            'monemail.fr.nf', 'monmail.fr.nf', 'fakemailz.com', 'fakemailgenerator.com',
+            'fakeinbox.com', 'fakeinbox.info', 'fakeinbox.net', 'fakeinbox.org',
+            'fakeinbox.us', 'fakeinbox.co.uk', 'fakeinbox.de', 'fakeinbox.fr',
+            'fakeinbox.it', 'fakeinbox.es', 'fakeinbox.ru', 'fakeinbox.jp',
+            'fakeinbox.cn', 'fakeinbox.in', 'fakeinbox.com.br', 'fakeinbox.com.au',
+            'fakeinbox.ca', 'fakeinbox.mx', 'fakeinbox.ar', 'fakeinbox.cl',
+            'fakeinbox.co', 'fakeinbox.pe', 'fakeinbox.ve', 'fakeinbox.uy',
+            'fakeinbox.py', 'fakeinbox.bo', 'fakeinbox.ec', 'fakeinbox.gt',
+            'fakeinbox.hn', 'fakeinbox.ni', 'fakeinbox.pa', 'fakeinbox.cr',
+            'fakeinbox.do', 'fakeinbox.sv', 'fakeinbox.pr', 'fakeinbox.cu',
+            'fakeinbox.jm', 'fakeinbox.tt', 'fakeinbox.bb', 'fakeinbox.ag',
+            'fakeinbox.dm', 'fakeinbox.gd', 'fakeinbox.kn', 'fakeinbox.lc',
+            'fakeinbox.vc', 'fakeinbox.ai', 'fakeinbox.bs', 'fakeinbox.bz',
+            'fakeinbox.ky', 'fakeinbox.tc', 'fakeinbox.vg', 'fakeinbox.vi'
         }
         
         # Role-based email patterns
