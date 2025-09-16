@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* No global colors; components decide their own colors */
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+}
+/* Visually appealing base tweaks */
+:root {
+  color-scheme: light dark;
+}
+* {
+  outline-color: #2563eb; /* focus outline color */
+}

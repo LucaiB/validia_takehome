@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  python-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - NUMVERIFY_API_KEY=${NUMVERIFY_API_KEY}
+      - ABSTRACT_API_KEY=${ABSTRACT_API_KEY}
+      - SERPAPI_KEY=${SERPAPI_KEY}
+      - COLLEGE_SCORECARD_KEY=${COLLEGE_SCORECARD_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - SEC_CONTACT_EMAIL=${SEC_CONTACT_EMAIL}
+      - OPENALEX_CONTACT_EMAIL=${OPENALEX_CONTACT_EMAIL}
+      - REDIS_URL=${REDIS_URL}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-10}
+    volumes:
+      - ./python_backend:/app
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
