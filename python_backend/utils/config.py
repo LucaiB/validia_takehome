@@ -5,6 +5,7 @@ Configuration management for the resume fraud detection service.
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
+from .secrets_manager import get_config_from_secrets, validate_required_secrets
 
 class Settings(BaseSettings):
     """Application settings."""
@@ -52,5 +53,18 @@ class Settings(BaseSettings):
         case_sensitive = False
 
 def get_settings() -> Settings:
-    """Get application settings."""
+    """Get application settings with secrets management."""
+    # Try to get configuration from AWS Secrets Manager first
+    try:
+        secrets_config = get_config_from_secrets()
+        
+        # Validate required secrets
+        if validate_required_secrets(secrets_config):
+            # Create Settings object from secrets
+            return Settings(**secrets_config)
+    except Exception as e:
+        print(f"Warning: Could not load secrets from AWS Secrets Manager: {e}")
+        print("Falling back to environment variables...")
+    
+    # Fall back to environment variables
     return Settings()

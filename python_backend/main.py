@@ -130,7 +130,7 @@ async def analyze_resume(
         raise HTTPException(status_code=500, detail="Analyzer not initialized")
     
     try:
-        # Validate file type
+        # Validate file type and size at ingress
         if not file.filename:
             raise HTTPException(status_code=400, detail="No filename provided")
         
@@ -141,8 +141,34 @@ async def analyze_resume(
                 detail="Unsupported file type. Only PDF and DOCX files are allowed."
             )
         
-        # Read file content
+        # Validate content type
+        allowed_content_types = {
+            'pdf': ['application/pdf'],
+            'docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        }
+        
+        if file.content_type not in allowed_content_types.get(file_extension, []):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid content type. Expected {allowed_content_types.get(file_extension)}, got {file.content_type}"
+            )
+        
+        # Read file content with size limit
         file_content = await file.read()
+        
+        # Enforce strict size limits (10MB max)
+        max_file_size = 10 * 1024 * 1024  # 10MB
+        if len(file_content) > max_file_size:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size allowed is {max_file_size // (1024*1024)}MB"
+            )
+        
+        # Additional security: Check for suspicious file signatures
+        if file_content.startswith(b'%PDF') and file_extension != 'pdf':
+            raise HTTPException(status_code=400, detail="File content doesn't match extension")
+        elif file_content.startswith(b'PK\x03\x04') and file_extension != 'docx':
+            raise HTTPException(status_code=400, detail="File content doesn't match extension")
         
         # Parse candidate hints if provided
         candidate_hints_dict = {}
@@ -213,13 +239,54 @@ async def analyze_document_authenticity(
         raise HTTPException(status_code=500, detail="Analyzer not initialized")
     
     try:
+        # Validate file type and size at ingress
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No filename provided")
+        
+        file_extension = file.filename.lower().split('.')[-1]
+        if file_extension not in ['pdf', 'docx']:
+            raise HTTPException(
+                status_code=400, 
+                detail="Unsupported file type. Only PDF and DOCX files are allowed."
+            )
+        
+        # Validate content type
+        allowed_content_types = {
+            'pdf': ['application/pdf'],
+            'docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        }
+        
+        if file.content_type not in allowed_content_types.get(file_extension, []):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid content type. Expected {allowed_content_types.get(file_extension)}, got {file.content_type}"
+            )
+        
+        # Read file content with size limit
         file_content = await file.read()
+        
+        # Enforce strict size limits (10MB max)
+        max_file_size = 10 * 1024 * 1024  # 10MB
+        if len(file_content) > max_file_size:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size allowed is {max_file_size // (1024*1024)}MB"
+            )
+        
+        # Additional security: Check for suspicious file signatures
+        if file_content.startswith(b'%PDF') and file_extension != 'pdf':
+            raise HTTPException(status_code=400, detail="File content doesn't match extension")
+        elif file_content.startswith(b'PK\x03\x04') and file_extension != 'docx':
+            raise HTTPException(status_code=400, detail="File content doesn't match extension")
+        
         result = await analyzer.analyze_document_authenticity(
             file_content=file_content,
             filename=file.filename,
             file_type=file.content_type
         )
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in document authenticity analysis: {e}")
         raise HTTPException(status_code=500, detail=f"Document analysis failed: {str(e)}")
