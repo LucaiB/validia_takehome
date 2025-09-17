@@ -377,11 +377,52 @@ class ContactVerificationService:
             stated_lower = stated_location.lower()
             phone_lower = phone_region.lower() if phone_region else ""
             
-            # Check country match
-            country_matches = any(country in stated_lower for country in [phone_country.lower() if phone_country else "", "usa", "united states"])
+            # Check country match - more comprehensive US state/city detection
+            country_matches = False
+            if phone_country:
+                phone_country_lower = phone_country.lower()
+                if phone_country_lower == "us":
+                    # For US phone numbers, check for US states, cities, or explicit country mentions
+                    us_indicators = [
+                        "usa", "united states", "america", "us",
+                        # US states
+                        "alabama", "alaska", "arizona", "arkansas", "california", "colorado", "connecticut",
+                        "delaware", "florida", "georgia", "hawaii", "idaho", "illinois", "indiana", "iowa",
+                        "kansas", "kentucky", "louisiana", "maine", "maryland", "massachusetts", "michigan",
+                        "minnesota", "mississippi", "missouri", "montana", "nebraska", "nevada", "new hampshire",
+                        "new jersey", "new mexico", "new york", "north carolina", "north dakota", "ohio",
+                        "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina", "south dakota",
+                        "tennessee", "texas", "utah", "vermont", "virginia", "washington", "west virginia",
+                        "wisconsin", "wyoming",
+                        # US state abbreviations
+                        "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id", "il", "in",
+                        "ia", "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv",
+                        "nh", "nj", "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa", "ri", "sc", "sd", "tn",
+                        "tx", "ut", "vt", "va", "wa", "wv", "wi", "wy",
+                        # Major US cities
+                        "new york", "los angeles", "chicago", "houston", "phoenix", "philadelphia", "san antonio",
+                        "san diego", "dallas", "san jose", "austin", "jacksonville", "fort worth", "columbus",
+                        "charlotte", "san francisco", "indianapolis", "seattle", "denver", "washington", "boston",
+                        "el paso", "nashville", "detroit", "oklahoma city", "portland", "las vegas", "memphis",
+                        "louisville", "baltimore", "milwaukee", "albuquerque", "tucson", "fresno", "mesa",
+                        "sacramento", "atlanta", "kansas city", "colorado springs", "omaha", "raleigh", "miami",
+                        "long beach", "virginia beach", "oakland", "minneapolis", "tulsa", "arlington", "tampa"
+                    ]
+                    country_matches = any(indicator in stated_lower for indicator in us_indicators)
+                else:
+                    # For non-US countries, check for country code or name
+                    country_matches = phone_country_lower in stated_lower
+            else:
+                # Fallback if no phone country detected
+                country_matches = False
             
-            # Check region match
-            region_matches = any(region in stated_lower for region in phone_lower.split()) if phone_lower else False
+            # Check region match - more flexible matching
+            region_matches = False
+            if phone_lower:
+                # Split phone region into words and check if any match
+                phone_words = phone_lower.split()
+                stated_words = stated_lower.split()
+                region_matches = any(word in stated_words for word in phone_words if len(word) > 2)
             
             # Toll-free conflict
             toll_free_conflict = is_toll_free and any(term in stated_lower for term in ["local", "area", "city"])

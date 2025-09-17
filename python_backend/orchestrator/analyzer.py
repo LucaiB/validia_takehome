@@ -452,7 +452,7 @@ Resume text:
             import asyncio
             result = await asyncio.wait_for(
                 run_background_verification(background_request),
-                timeout=30.0
+                timeout=60.0
             )
             
             # Convert to dictionary for consistency
@@ -461,7 +461,7 @@ Resume text:
             return result_dict
             
         except asyncio.TimeoutError:
-            logger.error("Background verification timed out after 30 seconds")
+            logger.error("Background verification timed out after 60 seconds")
             return None
         except Exception as e:
             logger.error(f"Background verification failed: {e}")

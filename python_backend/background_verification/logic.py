@@ -88,16 +88,33 @@ def _company_identity_score(ev: Dict[str, Any], employer_name: str) -> float:
     signals = 0
     total = 0
     
-    # GLEIF match by name similarity
+    # Check if this is a known major company
+    major_companies = {
+        "amazon web services", "aws", "amazon", "microsoft", "google", "apple", 
+        "meta", "facebook", "tesla", "netflix", "uber", "airbnb", "spotify",
+        "twitter", "linkedin", "salesforce", "oracle", "ibm", "intel"
+    }
+    
+    is_major_company = any(major in employer_name.lower() for major in major_companies)
+    
+    # GLEIF match by name similarity (more lenient for major companies)
     if ev.get("gleif"):
         total += 1
-        if any(similar(employer_name, x.get("legal_name", "")) > 0.75 for x in ev["gleif"]):
+        similarity_threshold = 0.6 if is_major_company else 0.75
+        if any(similar(employer_name, x.get("legal_name", "")) > similarity_threshold for x in ev["gleif"]):
             signals += 1
+        elif is_major_company and len(ev["gleif"]) > 0:
+            # For major companies, any GLEIF result is a positive signal
+            signals += 0.5
     
     # SEC ticker presence (public company)
     if ev.get("sec"):
         total += 1
         signals += 1  # presence is strong signal of existence
+    
+    # For major companies, give partial credit even without perfect matches
+    if is_major_company and total == 0:
+        return 0.6  # Higher baseline for known major companies
     
     if total == 0:
         return 0.3  # neutral if no sources available
@@ -230,12 +247,17 @@ async def run_background_verification(req: BackgroundVerifyRequest) -> Backgroun
     timeline_ok = round(sum(tl_flags)/len(tl_flags), 2) if tl_flags else 0.5
     logger.info(f"Timeline score calculated: {timeline_ok}")
 
-    dev_ok = 0.5
+    # Developer score is purely additive - starts at 0 and only adds points for positive evidence
+    dev_ok = 0.0
     if dev_ev.get("user"):
-        # modest bump for public footprint
-        dev_ok = 0.7
+        # Add points for having a public GitHub profile
+        dev_ok += 0.3
         if len(dev_ev.get("repos", [])) >= 5:
-            dev_ok = 0.8
+            # Add more points for having multiple repositories
+            dev_ok += 0.2
+        if dev_ev.get("user", {}).get("public_repos", 0) > 10:
+            # Add points for high activity
+            dev_ok += 0.1
     logger.info(f"Developer score calculated: {dev_ok}")
 
     logger.info("Calculating final composite score")

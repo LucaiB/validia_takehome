@@ -52,17 +52,42 @@ async def find_company_like(name: str) -> Optional[Dict[str, Any]]:
         best = None
         best_sim = 0.0
         
+        # Known company mappings for better matching
+        company_mappings = {
+            "amazon web services": "amazon",
+            "aws": "amazon",
+            "microsoft azure": "microsoft",
+            "google cloud": "google",
+            "alphabet": "google",
+            "meta": "facebook",
+            "facebook": "meta"
+        }
+        
+        # Check for direct mappings first
+        search_name = company_mappings.get(name_low, name_low)
+        
         for _, rec in data.items():
-            comp = rec.get("title", "")
-            # Simple similarity calculation
-            comp_words = set(comp.lower().split())
-            name_words = set(name_low.split())
+            comp = rec.get("title", "").lower()
+            
+            # Check for exact word matches (more lenient)
+            comp_words = set(comp.split())
+            name_words = set(search_name.split())
+            
             if comp_words and name_words:
-                sim = 1.0 - (len(comp_words ^ name_words) / max(1, len(comp_words | name_words)))
+                # Calculate similarity based on word overlap
+                overlap = len(comp_words & name_words)
+                total_words = len(comp_words | name_words)
+                sim = overlap / max(1, total_words) if total_words > 0 else 0
+                
+                # Boost score for major company name matches
+                if any(major in comp for major in ["amazon", "microsoft", "google", "apple", "meta", "tesla", "netflix"]):
+                    if any(major in search_name for major in ["amazon", "microsoft", "google", "apple", "meta", "tesla", "netflix"]):
+                        sim = max(sim, 0.8)  # High confidence for major companies
+                
                 if sim > best_sim:
                     best, best_sim = rec, sim
         
-        if best and best_sim > 0.3:  # Minimum similarity threshold
+        if best and best_sim > 0.2:  # Lowered threshold for better matching
             logger.info(f"SEC found company '{best.get('title')}' for '{name}' (similarity: {best_sim:.2f})")
             return best
         return None

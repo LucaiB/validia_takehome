@@ -1,0 +1,1198 @@
+"use client";
+
+import React, { useMemo, useRef, useState, useCallback } from "react";
+
+type RiskSlice = {
+  label: string;
+  score: number; // 0-100
+  description: string;
+};
+
+type AggregatedReport = {
+  overall_score: number; // 0-100
+  weights_applied: Record<string, number>;
+  slices: Array<{
+    label: string;
+    score: number;
+    description: string;
+  }>;
+  evidence: {
+    contact?: ContactVerificationResult | null;
+    ai?: AiDetectionResult | null;
+  };
+  rationale: string[];
+  generated_at: string;
+  version: string;
+};
+
+type ContactVerificationResult = {
+  email: string;
+  phone: string;
+  is_verified: boolean;
+  details: string;
+};
+
+type AiDetectionResult = {
+  is_ai_generated: boolean;
+  confidence: number;
+  model: string;
+};
+
+type CandidateInfo = {
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  linkedin: string | null;
+  github: string | null;
+  website: string | null;
+};
+
+type DocumentAuthenticityResult = {
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  creationDate: string | null;
+  modificationDate: string | null;
+  author: string | null;
+  creator: string | null;
+  producer: string | null;
+  title: string | null;
+  subject: string | null;
+  keywords: string | null;
+  pdfVersion: string | null;
+  pageCount: number | null;
+  isEncrypted: boolean;
+  hasDigitalSignature: boolean;
+  softwareUsed: string | null;
+  suspiciousIndicators: string[];
+  authenticityScore: number;
+  rationale: string;
+};
+
+function EmptyState() {
+  return (
+    <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
+      <svg
+        className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+        />
+      </svg>
+      <h3 className="mt-4 text-sm font-medium text-slate-900 dark:text-slate-100">
+        No resume uploaded
+      </h3>
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+        Upload a resume to begin fraud analysis.
+      </p>
+    </div>
+  );
+}
+
+function OverallRiskCard({ score, colorClass }: { score: number; colorClass: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-5 shadow-sm dark:border-slate-800">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">Overall Risk</h4>
+        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">0-100%</span>
+      </div>
+      <div className="mt-4 flex items-end gap-3">
+        <div className="relative h-10 w-10">
+          <svg viewBox="0 0 36 36" className="h-full w-full">
+            <path
+              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              fill="none"
+              stroke="#eee"
+              strokeWidth="3"
+            />
+            <path
+              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeDasharray={`${score}, 100`}
+              className={colorClass}
+            />
+            <text
+              x="18"
+              y="20"
+              textAnchor="middle"
+              fill="currentColor"
+              className={`text-sm font-bold ${colorClass} dark:text-slate-100`}
+            >
+              {score}%
+            </text>
+          </svg>
+        </div>
+        <div className="text-sm text-slate-600 dark:text-slate-400">
+          {score >= 70 ? (
+            <span className="font-medium text-red-600 dark:text-red-400">High Risk</span>
+          ) : score >= 40 ? (
+            <span className="font-medium text-amber-600 dark:text-amber-400">Moderate Risk</span>
+          ) : (
+            <span className="font-medium text-emerald-600 dark:text-emerald-400">Low Risk</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CategoryRadials({ risk }: { risk: RiskSlice[] }) {
+  return (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
+      {risk.map((r) => {
+        const bandColor =
+          r.score >= 70
+            ? "text-red-500 dark:text-red-400"
+            : r.score >= 40
+              ? "text-amber-500 dark:text-amber-400"
+              : "text-emerald-500 dark:text-emerald-400";
+
+        return (
+          <div key={r.label} className="flex flex-col items-center">
+            <div className="relative h-16 w-16">
+              <svg viewBox="0 0 36 36" className="h-full w-full">
+                <path
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  fill="none"
+                  stroke="#eee"
+                  strokeWidth="2"
+                />
+                <path
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeDasharray={`${r.score}, 100`}
+                  className={bandColor.replace("text-", "stroke-")}
+                />
+              </svg>
+            </div>
+            <div className="mt-2 text-center">
+              <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                {r.label}
+              </p>
+              <p className={`text-xs font-medium ${bandColor}`}>{r.score}%</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RiskDetail({ slice }: { slice: RiskSlice }) {
+  const bandColor =
+    slice.score >= 70
+      ? "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+      : slice.score >= 40
+        ? "bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+        : "bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400";
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-4 shadow-sm dark:border-slate-800">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          {slice.label}
+        </h4>
+        <span className={`rounded-full px-2 py-1 text-xs font-medium ${bandColor}`}>
+          {slice.score}%
+        </span>
+      </div>
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{slice.description}</p>
+    </div>
+  );
+}
+
+function KV({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "good" | "warn" | "bad" | "neutral";
+}) {
+  const toneColor =
+    tone === "good"
+      ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+      : tone === "warn"
+        ? "bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+        : tone === "bad"
+          ? "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+          : "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300";
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-800">
+      <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
+      <p className={`mt-1 font-medium ${toneColor}`}>{value}</p>
+    </div>
+  );
+}
+
+function ReportDownloadButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-zinc-900 dark:text-slate-100 dark:hover:bg-zinc-800"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" className="text-slate-600 dark:text-slate-300">
+        <path
+          fill="currentColor"
+          d="M12 3a1 1 0 0 1 1 1v9.586l2.293-2.293a1 1 0 1 1 1.414 1.414l-4.007 4.007a1 1 0 0 1-1.414 0L7.279 12.707a1 1 0 1 1 1.414-1.414L11 13.586V4a1 1 0 0 1 1-1ZM5 20a1 1 0 0 1 0-2h14a1 1 0 1 1 0 2H5Z"
+        />
+      </svg>
+      Download JSON Report
+    </button>
+  );
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1) + "…";
+}
+
+export default function Home() {
+  const [file, setFile] = useState<File | null>(null);
+  const [risk, setRisk] = useState<RiskSlice[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [contactResult, setContactResult] = useState<ContactVerificationResult | null>(null);
+  const [contactPending, setContactPending] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
+
+  const [aiResult, setAiResult] = useState<AiDetectionResult | null>(null);
+
+  const [candidateInfo, setCandidateInfo] = useState<CandidateInfo | null>(null);
+  const [documentAuthenticity, setDocumentAuthenticity] = useState<DocumentAuthenticityResult | null>(null);
+  const [contactVerification, setContactVerification] = useState<any>(null);
+  const [backgroundVerification, setBackgroundVerification] = useState<any>(null);
+  const [digitalFootprint, setDigitalFootprint] = useState<any>(null);
+  const [savePending, setSavePending] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+
+  // File upload and analysis states
+  const [fileAnalysisPending, setFileAnalysisPending] = useState(false);
+  const [fileAnalysisError, setFileAnalysisError] = useState<string | null>(null);
+  const [fileAnalysisResult, setFileAnalysisResult] = useState<any>(null);
+
+  // Move aggregate definition above any hooks that reference it (e.g., saveAnalysis)
+  const weights = useMemo(
+    () => ({
+      "Contact Info": 0.25,
+      "AI Content": 0.35,
+      "Background": 0.20,
+      "Digital Footprint": 0.10,
+      "Document Authenticity": 0.10,
+    }),
+    []
+  );
+
+  const normalizedRisk = useMemo(() => {
+    const defaultSlices: RiskSlice[] = [
+      { label: "Contact Info", score: 50, description: "Awaiting verification." },
+      { label: "AI Content", score: 50, description: "Awaiting AI detection." },
+      { label: "Background", score: 42, description: "Timeline cross-check placeholder." },
+      { label: "Digital Footprint", score: 20, description: "Presence lookup not performed." },
+      { label: "Document Authenticity", score: 30, description: "Metadata heuristics not applied." },
+    ];
+    if (!risk || risk.length === 0) return defaultSlices;
+    const map = new Map<string, RiskSlice>(risk.map((r) => [r.label, r]));
+    return defaultSlices.map((s) => map.get(s.label) ?? s);
+  }, [risk]);
+
+  const aggregate = useMemo(() => {
+    // Weighted average; missing slices fallback handled in normalizedRisk
+    let totalWeight = 0;
+    let sum = 0;
+    const rationale: string[] = [];
+
+    normalizedRisk.forEach((s) => {
+      const w = weights[s.label as keyof typeof weights] ?? 0;
+      totalWeight += w;
+      sum += s.score * w;
+
+      const band = s.score >= 70 ? "high risk" : s.score >= 40 ? "moderate risk" : "low risk";
+      rationale.push(`${s.label}: ${band} (${s.score}%) — ${truncate(s.description, 140)}`);
+    });
+
+    const overall = totalWeight > 0 ? Math.round(sum / totalWeight) : 0;
+
+    const report: AggregatedReport = {
+      overall_score: overall,
+      weights_applied: { ...weights },
+      slices: normalizedRisk.map((s) => ({
+        label: s.label,
+        score: s.score,
+        description: s.description,
+      })),
+      evidence: {
+        contact: contactResult,
+        ai: aiResult,
+      },
+      rationale,
+      generated_at: new Date().toISOString(),
+      version: "1.0.0",
+    };
+
+    return report;
+  }, [normalizedRisk, weights, contactResult, aiResult]);
+
+  // Save analysis now references aggregate which is already initialized above
+  const saveAnalysis = useCallback(async () => {
+    try {
+      setSavePending(true);
+      setSaveError(null);
+      setSaveSuccess(null);
+      const candidate = candidateInfo || {
+        full_name: "Unknown Candidate",
+        email: "unknown+demo@example.com",
+        phone: null as string | null,
+      };
+      const res = await fetch("/api/analyses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate, report: aggregate }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as { error?: string })?.error ?? `Save failed: ${res.status}`);
+      }
+      setSaveSuccess(
+        `Saved (candidate ${((data as any).candidate_id as string)?.slice?.(0, 8) ?? "?"}, analysis ${((data as any).analysis_id as string)?.slice?.(0, 8) ?? "?"})`
+      );
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setSavePending(false);
+    }
+  }, [aggregate]);
+
+  const overallRisk = useMemo(() => aggregate.overall_score, [aggregate]);
+  const overallRiskColor = useMemo(() => {
+    if (overallRisk >= 70) return "bg-red-500";
+    if (overallRisk >= 40) return "bg-amber-500";
+    return "bg-emerald-500";
+  }, [overallRisk]);
+
+
+  const analyzeUploadedFile = async () => {
+    if (!file) {
+      setFileAnalysisError("No file selected");
+      return;
+    }
+
+    try {
+      setFileAnalysisPending(true);
+      setFileAnalysisError(null);
+      setFileAnalysisResult(null);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload-analyze", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? `Request failed: ${res.status}`);
+      }
+
+      const data = await res.json();
+      setFileAnalysisResult(data);
+
+      // Update the AI Content risk slice with the file analysis results
+      const aiSliceScore = data.aiDetection.is_ai_generated
+        ? Math.min(100, Math.max(0, data.aiDetection.confidence))
+        : Math.max(0, 100 - data.aiDetection.confidence);
+
+      setAiResult({
+        is_ai_generated: data.aiDetection.is_ai_generated,
+        confidence: data.aiDetection.confidence,
+        model: data.aiDetection.model,
+      });
+
+      setRisk((prev) => {
+        const base =
+          prev && prev.length > 0
+            ? [...prev]
+            : [
+                { label: "Contact Info", score: 50, description: "Awaiting verification." },
+                { label: "AI Content", score: 50, description: "Awaiting AI detection." },
+                { label: "Background", score: 42, description: "Timeline cross-check placeholder." },
+                { label: "Digital Footprint", score: 20, description: "Presence lookup not performed." },
+                { label: "Document Authenticity", score: 30, description: "Metadata heuristics not applied." },
+              ];
+        const idx = base.findIndex((s) => s.label === "AI Content");
+        const desc =
+          (data.aiDetection.is_ai_generated
+            ? `Elevated AI signals (confidence ${data.aiDetection.confidence}%). `
+            : `Low AI signal (confidence ${data.aiDetection.confidence}%). `) +
+          (data.rationale ? `Rationale: ${data.rationale}` : "");
+        if (idx >= 0) {
+          base[idx] = { ...base[idx], score: aiSliceScore, description: desc };
+        } else {
+          base.push({ label: "AI Content", score: aiSliceScore, description: desc });
+        }
+        return base;
+      });
+
+      // Also update the candidate info, document authenticity, contact verification, background verification, and digital footprint with the extracted data
+      setCandidateInfo(data.candidateInfo);
+      setDocumentAuthenticity(data.documentAuthenticity);
+      setContactVerification(data.contactVerification);
+      setBackgroundVerification(data.backgroundVerification);
+      setDigitalFootprint(data.digitalFootprint);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      setFileAnalysisError(msg);
+    } finally {
+      setFileAnalysisPending(false);
+    }
+  };
+
+  const downloadJsonReport = () => {
+    const blob = new Blob([JSON.stringify(aggregate, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const ts = new Date(aggregate.generated_at).toISOString().replace(/[:.]/g, "-");
+    a.href = url;
+    a.download = `sentinelhire-fraud-report-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="min-h-screen p-6">
+      <div className="mx-auto max-w-4xl">
+        <header>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            SentinelHire Fraud Detection
+          </h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-400">
+            Upload a resume to analyze for potential fraud indicators.
+          </p>
+        </header>
+
+        <main className="mt-8">
+          <div className="max-w-4xl mx-auto">
+            <section className="mb-8">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-zinc-950">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  Resume Upload
+                </h2>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  Upload a PDF or DOCX resume for fraud analysis.
+                </p>
+
+                <div className="mt-6">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept=".pdf,.docx"
+                    onChange={(e) => {
+                      const selectedFile = e.target.files?.[0] || null;
+                      setFile(selectedFile);
+                      if (selectedFile) {
+                        setRisk([
+                          { label: "Contact Info", score: 85, description: "Email domain mismatch and phone number not found in professional directories." },
+                          { label: "AI Content", score: 60, description: "Moderate likelihood of AI-generated content detected in experience section." },
+                        ]);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-zinc-900 dark:text-slate-100 dark:hover:bg-zinc-800"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      className="text-slate-600 dark:text-slate-300"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M12 16.5a4.5 4.5 0 1 1 0-9a4.5 4.5 0 0 1 0 9Zm0-11a6.5 6.5 0 1 0 0 13a6.5 6.5 0 0 0 0-13Z"
+                      />
+                      <path
+                        fill="currentColor"
+                        d="M21.5 10.5a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1 0-1h1a.5.5 0 0 1 .5.5ZM18.186 5.186a.5.5 0 0 1 .707 0l.707.707a.5.5 0 0 1-.707.707l-.707-.707a.5.5 0 0 1 0-.707ZM12 2a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5-.5ZM5.186 5.186a.5.5 0 0 1 .707.707l-.707.707a.5.5 0 0 1-.707-.707l.707-.707ZM3 10.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5Z"
+                      />
+                    </svg>
+                    {file ? file.name : "Choose File"}
+                  </button>
+                  
+                  {file && (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={analyzeUploadedFile}
+                        disabled={fileAnalysisPending}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white shadow-sm hover:bg-blue-500 disabled:opacity-50"
+                      >
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          className="text-white"
+                        >
+                          <path
+                            fill="currentColor"
+                            d="M9.5 6.5v3h-3v-3h3M11 5H5v6h6V5zm-1.5 9.5v3h-3v-3h3M11 13H5v6h6v-6zm6.5-6.5v3h-3v-3h3M19 5h-6v6h6V5zm-6.5 8.5v3h-3v-3h3M19 13h-6v6h6v-6z"
+                          />
+                        </svg>
+                        {fileAnalysisPending ? "Analyzing PDF..." : "Analyze with Claude Sonnet 4"}
+                      </button>
+                      {fileAnalysisError && (
+                        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{fileAnalysisError}</p>
+                      )}
+                      {fileAnalysisResult && (
+                        <div className="mt-3 rounded-lg bg-green-50 p-3 dark:bg-green-900/30">
+                          <p className="text-sm font-medium text-green-800 dark:text-green-400">
+                            ✅ File analyzed successfully!
+                          </p>
+                          <p className="mt-1 text-xs text-green-700 dark:text-green-300">
+                            AI Detection: {fileAnalysisResult.aiDetection.is_ai_generated ? "AI Generated" : "Human Written"} 
+                            ({fileAnalysisResult.aiDetection.confidence}% confidence)
+                          </p>
+                        </div>
+                      )}
+                      
+                      {candidateInfo && (
+                        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-zinc-950">
+                          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
+                            📋 Extracted Candidate Information
+                          </h4>
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">Name</p>
+                              <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                {candidateInfo.full_name}
+                              </p>
+                            </div>
+                            {candidateInfo.email && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Email</p>
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {candidateInfo.email}
+                                </p>
+                              </div>
+                            )}
+                            {candidateInfo.phone && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Phone</p>
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {candidateInfo.phone}
+                                </p>
+                              </div>
+                            )}
+                            {candidateInfo.location && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Location</p>
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {candidateInfo.location}
+                                </p>
+                              </div>
+                            )}
+                            {candidateInfo.linkedin && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">LinkedIn</p>
+                                <a 
+                                  href={candidateInfo.linkedin} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                >
+                                  View Profile
+                                </a>
+                              </div>
+                            )}
+                            {candidateInfo.github && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">GitHub</p>
+                                <a 
+                                  href={candidateInfo.github} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                >
+                                  View Profile
+                                </a>
+                              </div>
+                            )}
+                            {candidateInfo.website && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Website</p>
+                                <a 
+                                  href={candidateInfo.website} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                >
+                                  Visit Site
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {contactVerification && (
+                        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-zinc-950">
+                          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
+                            📞 Contact Verification Analysis
+                          </h4>
+                          
+                          {/* Overall Score */}
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Verification Score</span>
+                              <span className={`text-lg font-bold ${
+                                contactVerification.score?.composite >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                                contactVerification.score?.composite >= 0.6 ? 'text-yellow-600 dark:text-yellow-400' :
+                                'text-red-600 dark:text-red-400'
+                              }`}>
+                                {Math.round((contactVerification.score?.composite || 0) * 100)}%
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-2 dark:bg-slate-700">
+                              <div 
+                                className={`h-2 rounded-full ${
+                                  contactVerification.score?.composite >= 0.8 ? 'bg-green-500' :
+                                  contactVerification.score?.composite >= 0.6 ? 'bg-yellow-500' :
+                                  'bg-red-500'
+                                }`}
+                                style={{ width: `${(contactVerification.score?.composite || 0) * 100}%` }}
+                              ></div>
+                            </div>
+                          </div>
+
+                          {/* Email Verification */}
+                          {contactVerification.email && (
+                            <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">📧 Email Verification</h5>
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="flex items-center">
+                                  <span className={`w-2 h-2 rounded-full mr-2 ${
+                                    contactVerification.email.syntax_valid ? 'bg-green-500' : 'bg-red-500'
+                                  }`}></span>
+                                  <span className="text-slate-600 dark:text-slate-400">Syntax Valid</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className={`w-2 h-2 rounded-full mr-2 ${
+                                    contactVerification.email.mx_records_found ? 'bg-green-500' : 'bg-red-500'
+                                  }`}></span>
+                                  <span className="text-slate-600 dark:text-slate-400">MX Records</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className={`w-2 h-2 rounded-full mr-2 ${
+                                    !contactVerification.email.is_disposable ? 'bg-green-500' : 'bg-red-500'
+                                  }`}></span>
+                                  <span className="text-slate-600 dark:text-slate-400">Not Disposable</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className={`w-2 h-2 rounded-full mr-2 ${
+                                    !contactVerification.email.is_role ? 'bg-green-500' : 'bg-yellow-500'
+                                  }`}></span>
+                                  <span className="text-slate-600 dark:text-slate-400">Not Role-based</span>
+                                </div>
+                              </div>
+                              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                                Score: {Math.round((contactVerification.score?.email_score || 0) * 100)}%
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Phone Verification */}
+                          {contactVerification.phone && (
+                            <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">📱 Phone Verification</h5>
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="flex items-center">
+                                  <span className={`w-2 h-2 rounded-full mr-2 ${
+                                    contactVerification.phone.valid ? 'bg-green-500' : 'bg-red-500'
+                                  }`}></span>
+                                  <span className="text-slate-600 dark:text-slate-400">Valid Format</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className={`w-2 h-2 rounded-full mr-2 ${
+                                    !contactVerification.phone.toll_free ? 'bg-green-500' : 'bg-yellow-500'
+                                  }`}></span>
+                                  <span className="text-slate-600 dark:text-slate-400">Not Toll-free</span>
+                                </div>
+                                <div className="text-slate-600 dark:text-slate-400">
+                                  <span className="font-medium">Country:</span> {contactVerification.phone.country_code}
+                                </div>
+                                <div className="text-slate-600 dark:text-slate-400">
+                                  <span className="font-medium">Region:</span> {contactVerification.phone.region_hint}
+                                </div>
+                              </div>
+                              {contactVerification.phone.carrier && (
+                                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                                  Carrier: {contactVerification.phone.carrier}
+                                </div>
+                              )}
+                              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                                Score: {Math.round((contactVerification.score?.phone_score || 0) * 100)}%
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Geo Consistency */}
+                          {contactVerification.geo_consistency && (
+                            <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">🌍 Geo Consistency</h5>
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="flex items-center">
+                                  <span className={`w-2 h-2 rounded-full mr-2 ${
+                                    contactVerification.geo_consistency.phone_country_matches ? 'bg-green-500' : 'bg-red-500'
+                                  }`}></span>
+                                  <span className="text-slate-600 dark:text-slate-400">Country Match</span>
+                                </div>
+                                <div className="flex items-center">
+                                  <span className={`w-2 h-2 rounded-full mr-2 ${
+                                    contactVerification.geo_consistency.phone_region_matches ? 'bg-green-500' : 'bg-red-500'
+                                  }`}></span>
+                                  <span className="text-slate-600 dark:text-slate-400">Region Match</span>
+                                </div>
+                              </div>
+                              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                                Score: {Math.round((contactVerification.score?.geo_score || 0) * 100)}%
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Rationale */}
+                          {contactVerification.rationale && contactVerification.rationale.length > 0 && (
+                            <div className="mt-4">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">📋 Analysis Details</h5>
+                              <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+                                {contactVerification.rationale.map((item, index) => (
+                                  <li key={index} className="flex items-start">
+                                    <span className="mr-2">•</span>
+                                    <span>{item}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {backgroundVerification && (
+                        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-zinc-950">
+                          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
+                            🏢 Background Verification Analysis
+                          </h4>
+                          
+                          {/* Overall Score */}
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Verification Score</span>
+                              <span className={`text-lg font-bold ${
+                                backgroundVerification.score?.composite >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                                backgroundVerification.score?.composite >= 0.6 ? 'text-yellow-600 dark:text-yellow-400' :
+                                'text-red-600 dark:text-red-400'
+                              }`}>
+                                {Math.round((backgroundVerification.score?.composite || 0) * 100)}%
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-2 dark:bg-slate-700">
+                              <div 
+                                className={`h-2 rounded-full ${
+                                  backgroundVerification.score?.composite >= 0.8 ? 'bg-green-500' :
+                                  backgroundVerification.score?.composite >= 0.6 ? 'bg-yellow-500' :
+                                  'bg-red-500'
+                                }`}
+                                style={{ width: `${(backgroundVerification.score?.composite || 0) * 100}%` }}
+                              ></div>
+                            </div>
+                          </div>
+
+                          {/* Detailed Scores */}
+                          <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">🏢 Company Identity</h5>
+                              <div className="text-2xl font-bold text-slate-700 dark:text-slate-300">
+                                {Math.round((backgroundVerification.score?.company_identity_score || 0) * 100)}%
+                              </div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                Registry verification
+                              </div>
+                            </div>
+                            
+                            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">🎓 Education</h5>
+                              <div className="text-2xl font-bold text-slate-700 dark:text-slate-300">
+                                {Math.round((backgroundVerification.score?.education_institution_score || 0) * 100)}%
+                              </div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                Institution verification
+                              </div>
+                            </div>
+                            
+                            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">⏰ Timeline</h5>
+                              <div className="text-2xl font-bold text-slate-700 dark:text-slate-300">
+                                {Math.round((backgroundVerification.score?.timeline_corroboration_score || 0) * 100)}%
+                              </div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                Timeline consistency
+                              </div>
+                            </div>
+                            
+                            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">💻 Developer</h5>
+                              <div className="text-2xl font-bold text-slate-700 dark:text-slate-300">
+                                {Math.round((backgroundVerification.score?.developer_footprint_score || 0) * 100)}%
+                              </div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                GitHub footprint
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Sources Used */}
+                          {backgroundVerification.sources_used && backgroundVerification.sources_used.length > 0 && (
+                            <div className="mb-4">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">🔍 Data Sources</h5>
+                              <div className="flex flex-wrap gap-2">
+                                {backgroundVerification.sources_used.map((source, index) => (
+                                  <span key={index} className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs rounded-full">
+                                    {source}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Rationale */}
+                          {backgroundVerification.rationale && backgroundVerification.rationale.length > 0 && (
+                            <div className="mt-4">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">📋 Analysis Details</h5>
+                              <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+                                {backgroundVerification.rationale.map((item, index) => (
+                                  <li key={index} className="flex items-start">
+                                    <span className="mr-2">•</span>
+                                    <span>{item}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {digitalFootprint && (
+                        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-zinc-950">
+                          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
+                            🌐 Digital Footprint Analysis
+                          </h4>
+                          
+                          {/* Overall Score */}
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Consistency Score</span>
+                              <span className={`text-lg font-bold ${
+                                digitalFootprint.consistency_score >= 80 ? 'text-green-600 dark:text-green-400' :
+                                digitalFootprint.consistency_score >= 60 ? 'text-yellow-600 dark:text-yellow-400' :
+                                'text-red-600 dark:text-red-400'
+                              }`}>
+                                {digitalFootprint.consistency_score}%
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-2 dark:bg-slate-700">
+                              <div 
+                                className={`h-2 rounded-full ${
+                                  digitalFootprint.consistency_score >= 80 ? 'bg-green-500' :
+                                  digitalFootprint.consistency_score >= 60 ? 'bg-yellow-500' :
+                                  'bg-red-500'
+                                }`}
+                                style={{ width: `${digitalFootprint.consistency_score}%` }}
+                              ></div>
+                            </div>
+                          </div>
+
+                          {/* Social Media Presence */}
+                          {digitalFootprint.social_presence && Object.keys(digitalFootprint.social_presence).length > 0 && (
+                            <div className="mb-4">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">📱 Professional Presence</h5>
+                              <div className="space-y-3">
+                                {Object.entries(digitalFootprint.social_presence).map(([platform, profiles]) => (
+                                  <div key={platform} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                                    <div className="flex items-center mb-2">
+                                      <span className="text-sm font-medium text-slate-900 dark:text-slate-100 capitalize">
+                                        {platform === 'linkedin' ? 'LinkedIn' : 
+                                         platform === 'github' ? 'GitHub' : 
+                                         platform === 'scholar' ? 'Google Scholar' : 
+                                         platform}
+                                      </span>
+                                      <span className="ml-2 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs rounded-full">
+                                        {Array.isArray(profiles) ? profiles.length : 1} profile{Array.isArray(profiles) && profiles.length !== 1 ? 's' : ''}
+                                      </span>
+                                    </div>
+                                    {Array.isArray(profiles) && profiles.map((profile, index) => (
+                                      <div key={index} className="mt-2">
+                                        <a 
+                                          href={profile.link} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                        >
+                                          {profile.title}
+                                        </a>
+                                        {profile.snippet && (
+                                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 line-clamp-2">
+                                            {profile.snippet}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Search Results */}
+                          {digitalFootprint.search_results && digitalFootprint.search_results.length > 0 && (
+                            <div className="mb-4">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">🔍 Search Results</h5>
+                              <div className="space-y-2">
+                                {digitalFootprint.search_results.slice(0, 5).map((result, index) => (
+                                  <div key={index} className="p-2 bg-slate-50 dark:bg-slate-800 rounded text-xs text-slate-600 dark:text-slate-400">
+                                    {result}
+                                  </div>
+                                ))}
+                                {digitalFootprint.search_results.length > 5 && (
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                                    +{digitalFootprint.search_results.length - 5} more results
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Analysis Details */}
+                          {digitalFootprint.details && (
+                            <div className="mt-4">
+                              <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">📋 Analysis Details</h5>
+                              <p className="text-xs text-slate-600 dark:text-slate-400">
+                                {digitalFootprint.details}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {documentAuthenticity && (
+                        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-zinc-950">
+                          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
+                            🔍 Document Authenticity Analysis
+                          </h4>
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Authenticity Score</span>
+                              <span className={`text-lg font-bold ${
+                                documentAuthenticity.authenticityScore >= 80 ? 'text-green-600 dark:text-green-400' :
+                                documentAuthenticity.authenticityScore >= 60 ? 'text-yellow-600 dark:text-yellow-400' :
+                                'text-red-600 dark:text-red-400'
+                              }`}>
+                                {documentAuthenticity.authenticityScore}%
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-2 dark:bg-slate-700">
+                              <div 
+                                className={`h-2 rounded-full ${
+                                  documentAuthenticity.authenticityScore >= 80 ? 'bg-green-500' :
+                                  documentAuthenticity.authenticityScore >= 60 ? 'bg-yellow-500' :
+                                  'bg-red-500'
+                                }`}
+                                style={{ width: `${documentAuthenticity.authenticityScore}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-4">
+                            <div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">File Size</p>
+                              <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                {(documentAuthenticity.fileSize / 1024).toFixed(1)} KB
+                              </p>
+                            </div>
+                            {documentAuthenticity.pageCount && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Pages</p>
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {documentAuthenticity.pageCount}
+                                </p>
+                              </div>
+                            )}
+                            {documentAuthenticity.softwareUsed && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Software Used</p>
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {documentAuthenticity.softwareUsed}
+                                </p>
+                              </div>
+                            )}
+                            {documentAuthenticity.pdfVersion && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">PDF Version</p>
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {documentAuthenticity.pdfVersion}
+                                </p>
+                              </div>
+                            )}
+                            {documentAuthenticity.creationDate && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Created</p>
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {new Date(documentAuthenticity.creationDate).toLocaleDateString()}
+                                </p>
+                              </div>
+                            )}
+                            {documentAuthenticity.modificationDate && (
+                              <div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Modified</p>
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {new Date(documentAuthenticity.modificationDate).toLocaleDateString()}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {documentAuthenticity.suspiciousIndicators.length > 0 && (
+                            <div className="mb-4">
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">⚠️ Suspicious Indicators</p>
+                              <ul className="list-disc list-inside space-y-1">
+                                {documentAuthenticity.suspiciousIndicators.map((indicator, index) => (
+                                  <li key={index} className="text-sm text-red-600 dark:text-red-400">
+                                    {indicator}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          <div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Analysis Rationale</p>
+                            <p className="text-sm text-slate-700 dark:text-slate-300">
+                              {documentAuthenticity.rationale}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Fraud Risk Dashboard - Only show after file analysis */}
+                {fileAnalysisResult && (
+                  <div className="mt-8 pt-8 border-t border-slate-200 dark:border-slate-800">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                      Fraud Risk Dashboard
+                    </h3>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                      Comprehensive analysis results based on the uploaded resume.
+                    </p>
+                  <>
+                    <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-3">
+                      <div className="col-span-1 md:col-span-1">
+                        <OverallRiskCard score={overallRisk} colorClass={overallRiskColor} />
+                        <div className="mt-4">
+                          <ReportDownloadButton onClick={downloadJsonReport} />
+                        </div>
+                      </div>
+                      <div className="col-span-1 md:col-span-2">
+                        <CategoryRadials risk={normalizedRisk} />
+                      </div>
+                    </div>
+
+                    <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {normalizedRisk.map((r) => (
+                        <RiskDetail key={r.label} slice={r} />
+                      ))}
+                    </div>
+
+                    <div className="mt-6 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                      <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        Scoring Rationale
+                      </h4>
+                      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
+                        {aggregate.rationale.map((line, idx) => (
+                          <li key={`rat-${idx}`}>{line}</li>
+                        ))}
+                      </ul>
+
+                      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <KV
+                          label="Overall Score"
+                          value={`${aggregate.overall_score}%`}
+                          tone={
+                            aggregate.overall_score >= 70
+                              ? "bad"
+                              : aggregate.overall_score >= 40
+                                ? "warn"
+                                : "good"
+                          }
+                        />
+                        <div className="rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-800">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Weights</p>
+                          <ul className="mt-1 space-y-1">
+                            {Object.entries(aggregate.weights_applied).map(([k, v]) => (
+                              <li key={`w-${k}`} className="flex justify-between">
+                                <span className="text-slate-700 dark:text-slate-300">{k}</span>
+                                <span className="text-slate-700 dark:text-slate-300">{(v * 100).toFixed(0)}%</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={saveAnalysis}
+                          disabled={savePending}
+                          className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50"
+                        >
+                          {savePending ? "Saving..." : "Save Analysis (Supabase)"}
+                        </button>
+                        {saveError ? (
+                          <span className="text-sm text-red-600 dark:text-red-400">{saveError}</span>
+                        ) : null}
+                        {saveSuccess ? (
+                          <span className="text-sm text-emerald-700 dark:text-emerald-400">{saveSuccess}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}

@@ -18,7 +18,7 @@ pytesseract==0.3.10
 Pillow==10.1.0
 
 # HTTP requests and external APIs
-httpx==0.25.2
+httpx>=0.24.0,<0.25.0
 requests==2.32.3
 
 # Contact verification dependencies
